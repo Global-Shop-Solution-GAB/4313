@@ -1,0 +1,114 @@
+Program.Sub.Preflight.Start
+V.Global.WO_NO.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.ODBC.Connection!conG.OpenConnection(v.Ambient.PDSN,v.Ambient.PUser,v.Ambient.PPass)
+Function.Intrinsic.Debug.InvokeDebugger
+Function.Intrinsic.Debug.Stop
+
+'hook 16800 single level new work order
+F.Intrinsic.Control.If(V.Caller.Hook, =, 16800)
+	F.Intrinsic.Control.CallSub(Create_Table)
+	F.Intrinsic.Control.CallSub(Create_File)
+F.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!conG.Close 
+Program.Sub.Main.End
+
+Program.Sub.Create_Table.Start
+V.Local..BulkDeclareString(sWO, sSuffix, ssql, sDate)
+
+
+V.Local.sWO.Set(V.Passed.009000)
+V.Local.sSuffix.Set(V.Passed.009001)
+V.Local.sDate.Set(V.Passed.000100)
+
+
+'combine for work order number
+F.Intrinsic.Control.If(V.Local.sSuffix, =, "")
+	V.Global.WO_NO.Set(V.Local.sWO)
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Build("{0}-{1}",V.Local.sWO, V.Local.sSuffix, V.Global.WO_NO)
+F.Intrinsic.Control.EndIf
+'create full data table here in order for dataview to string
+F.Intrinsic.String.Build("Select Job+'-'+Suffix as WO, '' as Customer,'' as NAME_CUSTOMER ,'' as Customer_PO, '{0}' as REQUIRED_DATE, '' as PRIORITY, '' as ITEM_NO, '' as ITEM_DESCRIPTION, Part as RM_ITEM_NO, Description as RM_ITEM_DESCRIPTION, '' as RM_ITEM_TYPE,'' as Thickness, '' as GRADE, Hours_Estimated as QTY, '' as DRAWING_FILE_PATH From JOB_OPERATIONS Where Job = '{1}' and Suffix = '{2}' and SEQ < '099999' and LMO = 'M' ", V.Local.sDate,V.Local.sWO, V.Local.sSuffix, V.Local.ssql)
+F.Data.DataTable.CreateFromSQL("JOB", "conG", V.Local.ssql, TRUE)
+
+'fill thickness
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select Part as RM_ITEM_NO, Thickness From INVENTORY_MST3")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "RM_ITEM_NO", "Thickness")
+F.Data.Dictionary.Close("dict")
+
+'fill Part
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select Job+'-'+Suffix as WO, Part as ITEM_NO From JOB_HEADER")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "WO", "ITEM_NO")
+F.Data.Dictionary.Close("dict")
+
+'fill Part Description
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select Job+'-'+Suffix as WO, Part_Description as ITEM_DESCRIPTION From JOB_HEADER")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "WO", "ITEM_DESCRIPTION")
+F.Data.Dictionary.Close("dict")
+
+'fill Customer
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select Job+'-'+Suffix as WO, rTrim(Customer) as Customer From JOB_HEADER")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "WO", "Customer")
+F.Data.Dictionary.Close("dict")
+
+'fill Customer Name
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select rTrim(Customer) as Customer, Name_Customer From Customer_Master")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "Customer", "Name_Customer")
+F.Data.Dictionary.Close("dict")
+
+'fill QTY ORDER
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select Job+'-'+Suffix as WO, QTY_Order as QTY From JOB_HEADER")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "WO", "QTY")
+F.Data.Dictionary.Close("dict")
+
+'fill Drawing_File_Path
+F.Data.Dictionary.CreateFromSQL("dict", "conG", "Select Job+'-'+Suffix as WO, Drawing_Customer as DRAWING_FILE_PATH From JOB_HEADER")
+F.Data.Dictionary.SetDefaultReturn("dict", "")
+F.Data.DataTable.FillFromDictionary("JOB", "dict", "WO", "DRAWING_FILE_PATH")
+F.Data.Dictionary.Close("dict")
+
+
+'DELETE COLUMN CUSTOMER
+F.Data.DataTable.RemoveColumn("JOB", "Customer")
+
+
+
+Program.Sub.Create_Table.End
+
+Program.Sub.Create_File.Start
+
+V.Local..BulkDeclareString(sFilePath, sData, sDate, sTime)
+
+'data table to string via dataview
+F.Data.DataView.Create("JOB", "JOB_V")
+
+Function.Data.DataView.ToString("JOB", "JOB_V", "*!*", "$!$", V.Local.sData)
+
+'set file path
+V.Local.sDate.Set(V.Ambient.Now)
+F.Intrinsic.String.Replace(V.Local.sDate, "/", "", V.Local.sDate)
+F.Intrinsic.String.Replace(V.Local.sDate, " ", "", V.Local.sDate)
+F.Intrinsic.String.Replace(V.Local.sDate, ":", "", V.Local.sDate)
+
+
+F.Intrinsic.String.Build("{0}\ProNest{1}.xlsx", V.Caller.FilesDir, V.Local.sDate, V.Local.sFilePath)
+
+F.Automation.MSExcel.WriteSpreadsheet(V.Local.sFilePath,  V.Local.sData)
+
+
+
+Program.Sub.Create_File.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$DH1$}$6/5/2017 9:54:14 AM$}$False
+Program.Sub.Comments.End
